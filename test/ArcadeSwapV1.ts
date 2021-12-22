@@ -7,6 +7,9 @@ import { BigNumber } from "ethers";
 const BIG_ONE = ethers.BigNumber.from(10).pow(18);
 
 describe("ArcadeSwapV1", function () {
+  const gameId = 1;
+  const gcPerArc = 200;
+
   // eslint-disable-next-line no-unused-vars
   let owner: SignerWithAddress,
     alpha: SignerWithAddress,
@@ -36,7 +39,7 @@ describe("ArcadeSwapV1", function () {
 
     await bep20Price.setTokenPrice(arcToken.address, tokenPrice);
     await arcToken.connect(user).approve(arcadeSwap.address, buyArcAmount);
-    await arcadeSwap.connect(alpha).buyGc(buyArcAmount);
+    await arcadeSwap.connect(alpha).buyGc(gameId, buyArcAmount);
 
     const { weightedAverage, arcAmount, gcAmount } = await arcadeSwap.userInfo(
       user.address
@@ -69,7 +72,7 @@ describe("ArcadeSwapV1", function () {
       await arcadeSwap.userInfo(user.address);
 
     await bep20Price.setTokenPrice(arcToken.address, tokenPrice);
-    await arcadeSwap.connect(alpha).sellGc(sellGcAmount);
+    await arcadeSwap.connect(alpha).sellGc(gameId, sellGcAmount);
 
     const { weightedAverage, arcAmount, gcAmount } = await arcadeSwap.userInfo(
       user.address
@@ -107,8 +110,6 @@ describe("ArcadeSwapV1", function () {
     gcToken = await GcToken.deploy("StarShards", "SS");
     await gcToken.deployed();
 
-    const gcPerArc = 200;
-
     const ArcadeSwapV1: ContractFactory = await ethers.getContractFactory(
       "ArcadeSwapV1"
     );
@@ -124,9 +125,9 @@ describe("ArcadeSwapV1", function () {
   });
 
   it("Should revert if sell without buy", async () => {
-    await expect(arcadeSwap.connect(alpha).sellGc("20000")).to.be.revertedWith(
-      "not enough game currency"
-    );
+    await expect(
+      arcadeSwap.connect(alpha).sellGc(gameId, "20000")
+    ).to.be.revertedWith("not enough game currency");
   });
 
   it("Should mint if buy Gc", async () => {
@@ -218,6 +219,40 @@ describe("ArcadeSwapV1", function () {
       BIG_ONE.mul(5).div(100),
       BigNumber.from("20000"),
       BigNumber.from("200000")
+    );
+    await arcToken.transfer(alpha.address, "10000");
+    await buyGc(
+      alpha,
+      BIG_ONE.mul(8).div(100),
+      BigNumber.from("10000"),
+      BIG_ONE.mul(6).div(100),
+      BigNumber.from("10000"),
+      BigNumber.from("160000")
+    );
+    await arcToken.transfer(alpha.address, "5000");
+    await buyGc(
+      alpha,
+      BIG_ONE.mul(2).div(10),
+      BigNumber.from("5000"),
+      BIG_ONE.mul(8).div(100),
+      BigNumber.from("5000"),
+      BigNumber.from("200000")
+    );
+    await sellGc(
+      alpha,
+      BIG_ONE.div(10),
+      BigNumber.from("300000"),
+      BIG_ONE.mul(8).div(100),
+      BigNumber.from("300000"),
+      BigNumber.from("18750")
+    );
+    await sellGc(
+      alpha,
+      BIG_ONE.mul(11).div(100),
+      BigNumber.from("40000"),
+      BIG_ONE.mul(8).div(100),
+      BigNumber.from("40000"),
+      BigNumber.from("2500")
     );
   });
 });
