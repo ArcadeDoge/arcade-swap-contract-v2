@@ -8,9 +8,11 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./interface/IBEP20Price.sol";
+import "./libraries/Requests.sol";
 import "./GameCurrency.sol";
 
 contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
+    using Request for Requests.Request;
     using SafeERC20 for IERC20;
 
     IBEP20Price public bep20Price;
@@ -20,7 +22,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     struct GameInfo {
         uint256 id; // game id
-        uint256 gcAmount;
+        IERC20 gcToken;
+        bool isActive;
         bool isPartnership; // true if the game is a partnership game
     }
 
@@ -30,7 +33,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 gcAmount; // in 18 digits
     }
 
-    mapping (address => UserInfo) public userInfo;
+    // <game id => <user address => UserInfo>>
+    mapping (uint256 => mapping (address => UserInfo)) public userInfo;
     mapping (uint256 => GameInfo) public gameInfo;
 
     struct Commission {
@@ -41,7 +45,11 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     }
     mapping(uint256 => Commission) internal _commissions;
 
+    bytes32 public immutable BACKEND_DOMAIN_SEPARATOR;
+    address public backendSigner;
+
     event BuyGameCurrency(
+        uint256 indexed _gameId,
         address indexed _user,
         uint256 _arcAmount,
         uint256 _received,
@@ -49,6 +57,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     );
 
     event SellGameCurrency(
+        uint256 indexed _gameId,
         address indexed _user,
         uint256 _gcAmount,
         uint256 _received,
@@ -65,11 +74,30 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         arcToken = _token;
         gcToken = _gcToken;
         gcPerArc = _gcPerArc;
+
+        uint256 chainId;
+        assembly {
+            chainId := chainid()
+        }
+        BACKEND_DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyContract),
+                keccak256("ArcadeSwap"),
+                keccak256("1"),
+                chainId,
+                address(this)
+            )
+        );
     }
 
     function setGcPerArc(uint256 _gcPerArc) external {
         require(_gcPerArc > 0, "non-zero GC to ARC");
         gcPerArc = _gcPerArc;
+    }
+
+    function setBackendSigner(address _signer) external {
+        require(_signer != address(0), "invalid signer address");
+        backendSigner = _signer;
     }
 
     function pause() external onlyOwner whenNotPaused {
@@ -80,13 +108,24 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         _unpause();
     }
 
-    function buyGc(uint256 _gameId, uint256 _amount)
+    function setGame(GameInfo memory _game) external onlyOwner {
+        require(gameInfo[_game.id] != _game.id, "Already initialized");
+
+    }
+
+    function setGameActive(uint256 _gameId, bool active) external onlyOwner {
+        require(gameInfo[_gameId].id == _gameId, "Not initialized game");
+    }
+
+    function buyGc(Requests.Request memory request)
         public
         virtual
         nonReentrant
         whenNotPaused
     {
-        require(_amount > 0, "invalid amount");
+        request.validate();
+        request.verify(BACKEND_DOMAIN_SEPARATOR);
+        require(request.maker == backendSigner, "invalid signer");
 
         // distribute commission
         uint256 commission1 =
@@ -118,37 +157,49 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         // GC token amount to be received in 18 digits
         uint256 toReceive = gcPerArc * arcPrice * _amount / 10 ** 18;
 
-        uint256 weightedAverage = userInfo[msg.sender].weightedAverage;
+        uint256 weightedAverage = userInfo[_gameId][msg.sender].weightedAverage;
         weightedAverage =
-            weightedAverage * userInfo[msg.sender].arcAmount / 10 ** 18 +
+            weightedAverage * userInfo[_gameId][msg.sender].arcAmount /
+            10 ** 18 +
             _amount * arcPrice / 10 ** 18;
-        userInfo[msg.sender].arcAmount += _amount;
-        userInfo[msg.sender].weightedAverage =
-            weightedAverage * 10 ** 18 / userInfo[msg.sender].arcAmount;
-        userInfo[msg.sender].gcAmount += toReceive;
+        userInfo[_gameId][msg.sender].arcAmount += _amount;
+        userInfo[_gameId][msg.sender].weightedAverage =
+            weightedAverage * 10 ** 18 /
+            userInfo[_gameId][msg.sender].arcAmount;
+        userInfo[_gameId][msg.sender].gcAmount += toReceive;
 
         gcToken.mint(msg.sender, toReceive);
 
-        emit BuyGameCurrency(msg.sender, _amount, toReceive, toReceive);
+        emit BuyGameCurrency(
+            _gameId,
+            msg.sender,
+            _amount,
+            toReceive,
+            toReceive
+        );
     }
 
-    function sellGc(uint256 _gameId, uint256 _amount)
+    function sellGc(Requests.Request memory request)
         public
         virtual
         nonReentrant whenNotPaused
     {
-        require(_amount > 0, "invalid amount");
+        request.validate();
+        request.verify(BACKEND_DOMAIN_SEPARATOR);
+        require(request.maker == backendSigner, "invalid signer");
+
         require(
-            userInfo[msg.sender].gcAmount >= _amount,
+            userInfo[_gameId][msg.sender].gcAmount >= request.amount,
             "not enough game currency"
         );
         require(
-            userInfo[msg.sender].weightedAverage > 0, "invalid weighted average"
+            userInfo[_gameId][msg.sender].weightedAverage > 0,
+            "invalid weighted average"
         );
 
         uint256 toReceive =
             _amount * (10 ** 18) /
-            (gcPerArc * userInfo[msg.sender].weightedAverage);
+            (gcPerArc * userInfo[_gameId][msg.sender].weightedAverage);
 
         // distribute commission
         uint256 commission1 =
@@ -174,10 +225,16 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
         gcToken.burn(msg.sender, _amount);
 
-        userInfo[msg.sender].arcAmount -= toReceive;
-        userInfo[msg.sender].gcAmount -= _amount;
+        userInfo[_gameId][msg.sender].arcAmount -= toReceive;
+        userInfo[_gameId][msg.sender].gcAmount -= _amount;
 
-        emit SellGameCurrency(msg.sender, _amount, toReceive, _amount);
+        emit SellGameCurrency(
+            _gameId,
+            msg.sender,
+            _amount,
+            toReceive,
+            _amount
+        );
     }
 
     /** 
@@ -189,13 +246,6 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         require(_to != address(0), "Transfer to zero address.");
         require(arcToken.balanceOf(address(this)) >= _amount, "invalid amount");
         arcToken.safeTransfer(_to, _amount);
-    }
-
-    function setGamePartnership(uint256 _gameId, bool _partnership)
-        external
-        onlyOwner
-    {
-        gameInfo[_gameId].isPartnership = _partnership;
     }
 
     /**
