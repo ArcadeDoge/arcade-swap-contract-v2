@@ -11,6 +11,7 @@ library Requests {
     struct Request {
         address maker;
         address requester;
+        address gcToken;
         uint256 gameId;
         uint256 amount;
         uint256 reserved1;
@@ -27,6 +28,7 @@ library Requests {
                     REQUEST_TYPEHASH,
                     request.maker,
                     request.requester,
+                    request.gcToken,
                     request.gameId,
                     request.amount,
                     request.reserved1,
@@ -38,18 +40,19 @@ library Requests {
     function validate(Request memory request) internal pure {
         require(request.maker != address(0), "invalid maker");
         require(request.requester != address(0), "invalid requester");
+        require(request.gcToken != address(0), "invalid game currency token");
         require(request.gameId > 0, "invalid gameId");
         require(request.amount > 0, "invalid amount");
     }
 
     function verify(Request memory request, bytes32 DOMAIN_SEPARATOR)
-        internal pure returns (bool)
+        internal pure
     {
-        bytes32 hash = request.hash();
+        bytes32 calcHash = hash(request);
         address signer =
             EIP712.recover(
                 DOMAIN_SEPARATOR,
-                hash,
+                calcHash,
                 request.v,
                 request.r,
                 request.s

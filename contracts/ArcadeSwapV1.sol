@@ -12,17 +12,18 @@ import "./libraries/Requests.sol";
 import "./GameCurrency.sol";
 
 contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
-    using Request for Requests.Request;
+    using Requests for Requests.Request;
     using SafeERC20 for IERC20;
 
     IBEP20Price public bep20Price;
     IERC20 public arcToken;
-    GameCurrency public gcToken;
-    uint256 public gcPerArc;
 
     struct GameInfo {
         uint256 id; // game id
+        uint256 gcPerArc;
         IERC20 gcToken;
+        string gcName;
+        string gcSymbol;
         bool isActive;
         bool isPartnership; // true if the game is a partnership game
     }
@@ -48,6 +49,21 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     bytes32 public immutable BACKEND_DOMAIN_SEPARATOR;
     address public backendSigner;
 
+    event NewGame(
+        uint256 indexed _gameId,
+        uint256 indexed _gcPerArc,
+        address indexed _gcToken,
+        string _gcName,
+        string _gcSymbol,
+        bool _isPartnership
+    );
+
+    event GameActive(uint256 indexed _gameId, bool _active);
+
+    event GameGcPerArc(uint256 indexed _gameId, uint256 _gcPerArc);
+
+    event GamePartnership(uint256 indexed _gameId, bool _partnership);
+
     event BuyGameCurrency(
         uint256 indexed _gameId,
         address indexed _user,
@@ -64,16 +80,18 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 _burned
     );
 
+    modifier isActiveGame(uint256 _gameId) {
+        require(gameInfo[_gameId].id == _gameId, "Not initialized game");
+        require(gameInfo[_gameId].isActive, "inactive game");
+        _;
+    }
+
     constructor(
         IBEP20Price _bep20Price,
-        IERC20 _token,
-        GameCurrency _gcToken,
-        uint256 _gcPerArc
+        IERC20 _token
     ) {
         bep20Price = _bep20Price;
         arcToken = _token;
-        gcToken = _gcToken;
-        gcPerArc = _gcPerArc;
 
         uint256 chainId;
         assembly {
@@ -81,18 +99,13 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         }
         BACKEND_DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyContract),
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyContract)"),
                 keccak256("ArcadeSwap"),
                 keccak256("1"),
                 chainId,
                 address(this)
             )
         );
-    }
-
-    function setGcPerArc(uint256 _gcPerArc) external {
-        require(_gcPerArc > 0, "non-zero GC to ARC");
-        gcPerArc = _gcPerArc;
     }
 
     function setBackendSigner(address _signer) external {
@@ -108,13 +121,57 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         _unpause();
     }
 
-    function setGame(GameInfo memory _game) external onlyOwner {
-        require(gameInfo[_game.id] != _game.id, "Already initialized");
+    function setNewGame(
+        uint256 _gameId,
+        uint256 _gcPerArc,
+        string memory _gcName,
+        string memory _gcSymbol,
+        bool isPartnership
+    ) external onlyOwner {
+        require(gameInfo[_gameId].id != _gameId, "Already initialized");
+        require(_gcPerArc > 0, "invalid game currency amount per arc token");
+        GameCurrency gcToken = new GameCurrency(_gcName, _gcSymbol);
+        gameInfo[_gameId] = GameInfo({
+            id: _gameId,
+            gcPerArc: _gcPerArc,
+            gcName: _gcName,
+            gcSymbol: _gcSymbol,
+            gcToken: IERC20(gcToken),
+            isActive: true,
+            isPartnership: isPartnership
+        });
 
+        emit NewGame(
+            _gameId,
+            _gcPerArc,
+            address(gcToken),
+            _gcName,
+            _gcSymbol,
+            isPartnership
+        );
     }
 
-    function setGameActive(uint256 _gameId, bool active) external onlyOwner {
-        require(gameInfo[_gameId].id == _gameId, "Not initialized game");
+    function setGameActive(uint256 _gameId, bool _active) external onlyOwner {
+        gameInfo[_gameId].isActive = _active;
+
+        emit GameActive(_gameId, _active);
+    }
+
+    function setGameGcPerArc(uint256 _gameId, uint256 _gcPerArc)
+        external onlyOwner isActiveGame(_gameId)
+    {
+        require(_gcPerArc > 0, "invalid game currency amount per arc token");
+        gameInfo[_gameId].gcPerArc = _gcPerArc;
+
+        emit GameGcPerArc(_gameId, _gcPerArc);
+    }
+
+    function setPartnership(uint256 _gameId, bool _partnership)
+        external onlyOwner isActiveGame(_gameId)
+    {
+        gameInfo[_gameId].isPartnership = _partnership;
+
+        emit GamePartnership(_gameId, _partnership);
     }
 
     function buyGc(Requests.Request memory request)
@@ -122,27 +179,34 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         virtual
         nonReentrant
         whenNotPaused
+        isActiveGame(request.gameId)
     {
         request.validate();
         request.verify(BACKEND_DOMAIN_SEPARATOR);
         require(request.maker == backendSigner, "invalid signer");
+        require(
+            request.gcToken == address(gameInfo[request.gameId].gcToken),
+            "invalid game currency token"
+        );
+
+        uint256 gameId = request.gameId;
 
         // distribute commission
         uint256 commission1 =
-            _amount * _commissions[_gameId].commission1 / 10000;
+            request.amount * _commissions[gameId].commission1 / 10000;
         uint256 commission2 =
-            _amount * _commissions[_gameId].commission2 / 10000;
+            request.amount * _commissions[gameId].commission2 / 10000;
         if (commission1 > 0) {
             arcToken.safeTransferFrom(
                 msg.sender,
-                _commissions[_gameId].treasuryAddress1,
+                _commissions[gameId].treasuryAddress1,
                 commission1
             );
         }
         if (commission2 > 0) {
             arcToken.safeTransferFrom(
                 msg.sender,
-                _commissions[_gameId].treasuryAddress2,
+                _commissions[gameId].treasuryAddress2,
                 commission2
             );
         }
@@ -150,30 +214,31 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         arcToken.safeTransferFrom(
             msg.sender,
             address(this),
-            _amount - commission1 - commission2
+            request.amount - commission1 - commission2
         );
 
         uint256 arcPrice = bep20Price.getTokenPrice(address(arcToken), 18);
         // GC token amount to be received in 18 digits
-        uint256 toReceive = gcPerArc * arcPrice * _amount / 10 ** 18;
+        uint256 toReceive =
+            gameInfo[gameId].gcPerArc * arcPrice * request.amount / 10 ** 18;
 
-        uint256 weightedAverage = userInfo[_gameId][msg.sender].weightedAverage;
+        uint256 weightedAverage = userInfo[gameId][msg.sender].weightedAverage;
         weightedAverage =
-            weightedAverage * userInfo[_gameId][msg.sender].arcAmount /
+            weightedAverage * userInfo[gameId][msg.sender].arcAmount /
             10 ** 18 +
-            _amount * arcPrice / 10 ** 18;
-        userInfo[_gameId][msg.sender].arcAmount += _amount;
-        userInfo[_gameId][msg.sender].weightedAverage =
+            request.amount * arcPrice / 10 ** 18;
+        userInfo[gameId][msg.sender].arcAmount += request.amount;
+        userInfo[gameId][msg.sender].weightedAverage =
             weightedAverage * 10 ** 18 /
-            userInfo[_gameId][msg.sender].arcAmount;
-        userInfo[_gameId][msg.sender].gcAmount += toReceive;
+            userInfo[gameId][msg.sender].arcAmount;
+        userInfo[gameId][msg.sender].gcAmount += toReceive;
 
-        gcToken.mint(msg.sender, toReceive);
+        GameCurrency(request.gcToken).mint(msg.sender, toReceive);
 
         emit BuyGameCurrency(
-            _gameId,
+            gameId,
             msg.sender,
-            _amount,
+            request.amount,
             toReceive,
             toReceive
         );
@@ -182,39 +247,49 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     function sellGc(Requests.Request memory request)
         public
         virtual
-        nonReentrant whenNotPaused
+        nonReentrant
+        whenNotPaused
+        isActiveGame(request.gameId)
     {
         request.validate();
         request.verify(BACKEND_DOMAIN_SEPARATOR);
         require(request.maker == backendSigner, "invalid signer");
+        require(
+            request.gcToken == address(gameInfo[request.gameId].gcToken),
+            "invalid game currency token"
+        );
+
+        uint256 gameId = request.gameId;
 
         require(
-            userInfo[_gameId][msg.sender].gcAmount >= request.amount,
+            userInfo[gameId][msg.sender].gcAmount >= request.amount,
             "not enough game currency"
         );
         require(
-            userInfo[_gameId][msg.sender].weightedAverage > 0,
+            userInfo[gameId][msg.sender].weightedAverage > 0,
             "invalid weighted average"
         );
 
         uint256 toReceive =
-            _amount * (10 ** 18) /
-            (gcPerArc * userInfo[_gameId][msg.sender].weightedAverage);
+            request.amount * (10 ** 18) /
+            (
+                gameInfo[gameId].gcPerArc * userInfo[gameId][msg.sender].weightedAverage
+            );
 
         // distribute commission
         uint256 commission1 =
-            toReceive * _commissions[_gameId].commission1 / 10000;
+            toReceive * _commissions[gameId].commission1 / 10000;
         uint256 commission2 =
-            toReceive * _commissions[_gameId].commission2 / 10000;
+            toReceive * _commissions[gameId].commission2 / 10000;
         if (commission1 > 0) {
             arcToken.safeTransfer(
-                _commissions[_gameId].treasuryAddress1,
+                _commissions[gameId].treasuryAddress1,
                 commission1
             );
         }
         if (commission2 > 0) {
             arcToken.safeTransfer(
-                _commissions[_gameId].treasuryAddress2,
+                _commissions[gameId].treasuryAddress2,
                 commission2
             );
         }
@@ -223,17 +298,17 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             msg.sender,
             toReceive - commission1 - commission2
         );
-        gcToken.burn(msg.sender, _amount);
+        GameCurrency(request.gcToken).burn(msg.sender, request.amount);
 
-        userInfo[_gameId][msg.sender].arcAmount -= toReceive;
-        userInfo[_gameId][msg.sender].gcAmount -= _amount;
+        userInfo[gameId][msg.sender].arcAmount -= toReceive;
+        userInfo[gameId][msg.sender].gcAmount -= request.amount;
 
         emit SellGameCurrency(
-            _gameId,
+            gameId,
             msg.sender,
-            _amount,
+            request.amount,
             toReceive,
-            _amount
+            request.amount
         );
     }
 
@@ -250,21 +325,21 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Set commission per game
-     * @param _id game id
+     * @param _gameId game id
      * @param _commission1 first commission percent in 10000(100%)
      * @param _commission2 second commission percent in 10000(100%)
      * @param _treasury1 first treasury address
      * @param _treasury2 second treasury address
      */
     function setCommission(
-        uint256 _id,
+        uint256 _gameId,
         uint256 _commission1,
         uint256 _commission2,
         address _treasury1,
         address _treasury2
     ) external onlyOwner {
-        require(_id != 0, "game id can't be zero");
-        _commissions[_id] = Commission({
+        require(_gameId != 0, "game id can't be zero");
+        _commissions[_gameId] = Commission({
             commission1: _commission1,
             commission2: _commission2,
             treasuryAddress1: _treasury1,
@@ -274,15 +349,15 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice View commission per game
-     * @param _id game id
+     * @param _gameId game id
      * @return commission structure
      */
-    function viewCommission(uint256 _id)
+    function viewCommission(uint256 _gameId)
         external
         view
         returns (Commission memory)
     {
-        require(_id != 0, "game id can't be zero");
-        return _commissions[_id];
+        require(_gameId != 0, "game id can't be zero");
+        return _commissions[_gameId];
     }
 }
