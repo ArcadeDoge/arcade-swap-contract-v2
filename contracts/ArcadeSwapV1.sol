@@ -46,7 +46,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     }
     mapping(uint256 => Commission) internal _commissions;
 
-    bytes32 public immutable BACKEND_DOMAIN_SEPARATOR;
+    bytes32 public immutable DOMAIN_SEPARATOR;
     address public backendSigner;
 
     event NewGame(
@@ -81,7 +81,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     );
 
     modifier isActiveGame(uint256 _gameId) {
-        require(gameInfo[_gameId].id == _gameId, "Not initialized game");
+        require(gameInfo[_gameId].id == _gameId, "not initialized game");
         require(gameInfo[_gameId].isActive, "inactive game");
         _;
     }
@@ -97,9 +97,9 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         assembly {
             chainId := chainid()
         }
-        BACKEND_DOMAIN_SEPARATOR = keccak256(
+        DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyContract)"),
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256("ArcadeSwap"),
                 keccak256("1"),
                 chainId,
@@ -182,7 +182,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         isActiveGame(request.gameId)
     {
         request.validate();
-        request.verify(BACKEND_DOMAIN_SEPARATOR);
+        request.verify(DOMAIN_SEPARATOR);
         require(request.maker == backendSigner, "invalid signer");
         require(
             request.gcToken == address(gameInfo[request.gameId].gcToken),
@@ -252,7 +252,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         isActiveGame(request.gameId)
     {
         request.validate();
-        request.verify(BACKEND_DOMAIN_SEPARATOR);
+        request.verify(DOMAIN_SEPARATOR);
         require(request.maker == backendSigner, "invalid signer");
         require(
             request.gcToken == address(gameInfo[request.gameId].gcToken),

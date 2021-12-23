@@ -2,11 +2,13 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Contract, ContractFactory } from "@ethersproject/contracts";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { BigNumber } from "ethers";
+import { BigNumber, Signature } from "ethers";
+import { RequestType, RequestWithSignature } from "./helpers/Request";
+import { createBuyRequest } from "./helpers/createRequest";
 
 const BIG_ONE = ethers.BigNumber.from(10).pow(18);
 
-describe("ArcadeSwapV1", function () {
+describe("ArcadeSwapV1-Swap", function () {
   const gameId = 1;
   const gcPerArc = 200;
 
@@ -18,10 +20,8 @@ describe("ArcadeSwapV1", function () {
     // eslint-disable-next-line no-unused-vars
     addrs: any;
 
-  let arcadeSwap: Contract,
-    bep20Price: Contract,
-    arcToken: Contract,
-    gcToken: Contract;
+  let arcadeSwap: Contract, bep20Price: Contract, arcToken: Contract;
+  let gcToken: string;
 
   const buyGc = async (
     user: SignerWithAddress,
@@ -31,17 +31,51 @@ describe("ArcadeSwapV1", function () {
     expectedArcAmount: BigNumber,
     expectedGcAmount: BigNumber
   ) => {
+    const gcTokenContract: Contract = await ethers.getContractAt(
+      "GameCurrency",
+      gcToken,
+      user
+    );
+
     const initArcBalance = await arcToken.balanceOf(user.address);
-    const initGcBalance = await gcToken.balanceOf(user.address);
+    const initGcBalance = await gcTokenContract.balanceOf(user.address);
 
     const { arcAmount: initArcAmount, gcAmount: initGcAmount } =
-      await arcadeSwap.userInfo(user.address);
+      await arcadeSwap.userInfo(gameId, user.address);
 
     await bep20Price.setTokenPrice(arcToken.address, tokenPrice);
     await arcToken.connect(user).approve(arcadeSwap.address, buyArcAmount);
-    await arcadeSwap.connect(alpha).buyGc(gameId, buyArcAmount);
+
+    const request: RequestType = {
+      maker: owner.address,
+      requester: user.address,
+      gcToken: gcToken,
+      gameId: gameId,
+      amount: buyArcAmount.toString(),
+      reserved1: 0,
+      reserved2: 0,
+    };
+    const signature: Signature = await createBuyRequest(
+      owner,
+      user,
+      request.gcToken,
+      request.gameId,
+      buyArcAmount,
+      BigNumber.from(0),
+      BigNumber.from(0),
+      arcadeSwap.address
+    );
+    const requestWithSignature: RequestWithSignature = {
+      // eslint-disable-next-line
+      ...request,
+      v: signature.v,
+      r: signature.r,
+      s: signature.s,
+    };
+    await arcadeSwap.connect(user).buyGc(requestWithSignature);
 
     const { weightedAverage, arcAmount, gcAmount } = await arcadeSwap.userInfo(
+      gameId,
       user.address
     );
 
@@ -53,7 +87,7 @@ describe("ArcadeSwapV1", function () {
 
     const balanceOfArc = await arcToken.balanceOf(user.address);
     expect(initArcBalance.sub(balanceOfArc)).to.equal(buyArcAmount);
-    const balanceOfGc = await gcToken.balanceOf(user.address);
+    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
     expect(balanceOfGc.sub(initGcBalance)).to.equal(expectedGcAmount);
   };
 
@@ -65,16 +99,50 @@ describe("ArcadeSwapV1", function () {
     expectedGcAmount: BigNumber,
     expectedArcAmount: BigNumber
   ) => {
+    const gcTokenContract: Contract = await ethers.getContractAt(
+      "GameCurrency",
+      gcToken,
+      user
+    );
+
     const initArcBalance = await arcToken.balanceOf(user.address);
-    const initGcBalance = await gcToken.balanceOf(user.address);
+    const initGcBalance = await gcTokenContract.balanceOf(user.address);
 
     const { arcAmount: initArcAmount, gcAmount: initGcAmount } =
-      await arcadeSwap.userInfo(user.address);
+      await arcadeSwap.userInfo(gameId, user.address);
 
     await bep20Price.setTokenPrice(arcToken.address, tokenPrice);
-    await arcadeSwap.connect(alpha).sellGc(gameId, sellGcAmount);
+
+    const request: RequestType = {
+      maker: owner.address,
+      requester: user.address,
+      gcToken: gcToken,
+      gameId: gameId,
+      amount: sellGcAmount.toString(),
+      reserved1: 0,
+      reserved2: 0,
+    };
+    const signature: Signature = await createBuyRequest(
+      owner,
+      user,
+      request.gcToken,
+      request.gameId,
+      sellGcAmount,
+      BigNumber.from(0),
+      BigNumber.from(0),
+      arcadeSwap.address
+    );
+    const requestWithSignature: RequestWithSignature = {
+      // eslint-disable-next-line
+      ...request,
+      v: signature.v,
+      r: signature.r,
+      s: signature.s,
+    };
+    await arcadeSwap.connect(user).sellGc(requestWithSignature);
 
     const { weightedAverage, arcAmount, gcAmount } = await arcadeSwap.userInfo(
+      gameId,
       user.address
     );
 
@@ -86,7 +154,7 @@ describe("ArcadeSwapV1", function () {
 
     const balanceOfArc = await arcToken.balanceOf(user.address);
     expect(balanceOfArc.sub(initArcBalance)).to.equal(expectedArcAmount);
-    const balanceOfGc = await gcToken.balanceOf(user.address);
+    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
     expect(initGcBalance.sub(balanceOfGc)).to.equal(sellGcAmount);
   };
 
@@ -104,29 +172,32 @@ describe("ArcadeSwapV1", function () {
     arcToken = await ArcToken.deploy(100000000);
     await arcToken.deployed();
 
-    const GcToken: ContractFactory = await ethers.getContractFactory(
-      "GameCurrency"
-    );
-    gcToken = await GcToken.deploy("StarShards", "SS");
-    await gcToken.deployed();
-
     const ArcadeSwapV1: ContractFactory = await ethers.getContractFactory(
       "ArcadeSwapV1"
     );
     arcadeSwap = await ArcadeSwapV1.deploy(
       bep20Price.address,
-      arcToken.address,
-      gcToken.address,
-      gcPerArc
+      arcToken.address
     );
     await arcadeSwap.deployed();
 
-    await gcToken.transferOwnership(arcadeSwap.address);
+    await arcadeSwap.setBackendSigner(owner.address);
+
+    await arcadeSwap.setNewGame(gameId, gcPerArc, "StarShards", "SS", false);
+    const gameInfo = await arcadeSwap.gameInfo(gameId);
+    gcToken = gameInfo.gcToken;
   });
 
   it("Should revert if sell without buy", async () => {
     await expect(
-      arcadeSwap.connect(alpha).sellGc(gameId, "20000")
+      sellGc(
+        alpha,
+        BIG_ONE.div(100), // $0.01
+        BigNumber.from("200000"),
+        BIG_ONE.div(100),
+        BigNumber.from("200000"),
+        BigNumber.from("100000")
+      )
     ).to.be.revertedWith("not enough game currency");
   });
 
