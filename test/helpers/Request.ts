@@ -118,48 +118,12 @@ class Request {
         ["0x19", "0x01", DOMAIN_SEPARATOR, this.hash()]
       )
     );
-
-    // const domain: TypedDataDomain = {
-    //   name: "AradeSwap",
-    //   version: "1",
-    //   chainId,
-    //   verifyingContract,
-    // };
-    // const types: Record<string, TypedDataField[]> = {
-    //   // EIP712Domain: [
-    //   //   { name: "name", type: "string" },
-    //   //   { name: "version", type: "string" },
-    //   //   { name: "chainId", type: "uint256" },
-    //   //   { name: "verifyingContract", type: "address" },
-    //   // ],
-    //   Request: [
-    //     { name: "maker", type: "address" },
-    //     { name: "requester", type: "address" },
-    //     { name: "gcToken", type: "address" },
-    //     { name: "gameId", type: "uint256" },
-    //     { name: "amount", type: "uint256" },
-    //     { name: "reserved1", type: "uint256" },
-    //     { name: "reserved2", type: "uint256" },
-    //   ],
-    // };
-    // const value: Record<string, any> = {
-    //   maker: overrides?.maker || this.request.maker,
-    //   requester: overrides?.requester || this.request.requester,
-    //   gcToken: overrides?.gcToken || this.request.gcToken,
-    //   gameId: overrides?.gameId || this.request.gameId,
-    //   amount: overrides?.amount || this.request.amount,
-    //   reserved1: overrides?.reserved1 || this.request.reserved1,
-    //   reserved2: overrides?.reserved2 || this.request.reserved2,
-    // };
-
-    // const digest = _TypedDataEncoder.encode(domain, types, value);
     const privateKey =
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
     const key = new ethers.utils.SigningKey(ethers.utils.hexlify(privateKey));
     const signDigest = key.signDigest.bind(key);
     const signature = ethers.utils.joinSignature(signDigest(digest));
 
-    // const signature: Signature = key.signDigest(digest);
     return ethers.utils.splitSignature(signature);
   }
 }
