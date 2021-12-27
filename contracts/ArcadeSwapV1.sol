@@ -190,25 +190,32 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         emit GamePartnership(_gameId, _partnership);
     }
 
-    function setGameWhitelist(uint256 _gameId, address _user, bool status)
-        external onlyOwner isActive(_gameId)
+    function setGameWhitelist(uint256 _gameId, address _user, bool _status)
+        external onlyOwner isActiveGame(_gameId)
     {
         require(
             gameInfo[_gameId].isPartnership,
             "only available for partnership game"
         );
-        if (status) {
+        if (_status) {
             gameWhitelists[_gameId].push(_user);
         }
-        isWhitelists[_gameId][_user] = status;
+        isWhitelists[_gameId][_user] = _status;
     }
 
     function setGameWhitelists(
+        uint256 _gameId,
         address[] calldata _addrs,
         bool _status
-    ) external onlyOwner {
+    ) external onlyOwner isActiveGame(_gameId) {
+        require(
+            gameInfo[_gameId].isPartnership,
+            "only available for partnership game"
+        );
         for (uint256 i = 0; i < _addrs.length; i++) {
-            require(_addrs[i] != address(0), "invalid zero address");
+            if (_status) {
+                gameWhitelists[_gameId].push(_addrs[i]);
+            }
             isWhitelists[_gameId][_addrs[i]] = _status;
         }
     }
@@ -230,7 +237,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
         uint256 gameId = request.gameId;
         if (gameInfo[gameId].isPartnership) {
-            require(isWhitelists[msg.sender], "not a whitelist");
+            require(isWhitelists[gameId][msg.sender], "not a whitelist");
         }
 
         // distribute commission
@@ -286,9 +293,9 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
 
         // if not partnership, directly transfer purchased Gc to the game
-        if (!gameInfo[_gameId].isPartnership) {
+        if (!gameInfo[gameId].isPartnership) {
             GameCurrency(request.gcToken).burn(msg.sender, toReceive);
-            emit TransferWalletToGame(_gameId, msg.sender, toReceive);
+            emit TransferWalletToGame(gameId, msg.sender, toReceive);
         }
     }
 
@@ -309,7 +316,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
         uint256 gameId = request.gameId;
         if (gameInfo[gameId].isPartnership) {
-            require(isWhitelists[msg.sender], "not a whitelist");
+            require(isWhitelists[gameId][msg.sender], "not a whitelist");
         }
 
         require(
@@ -363,8 +370,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
 
         // if not partnership, directly transfer purchased Gc to the game
-        if (!gameInfo[_gameId].isPartnership) {
-            emit TransferGameToWallet(_gameId, msg.sender, request.amount);
+        if (!gameInfo[gameId].isPartnership) {
+            emit TransferGameToWallet(gameId, msg.sender, request.amount);
         }
     }
 
