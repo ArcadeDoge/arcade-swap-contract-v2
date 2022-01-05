@@ -35,9 +35,7 @@ async function main() {
     const Swap = await ethers.getContractFactory("ArcadeSwapV1");
     const arcadeSwap = await Swap.deploy(
       config[network.name].BEP20Price,
-      config[network.name].ARC,
-      gameCurrency.address,
-      config[network.name].GcPerArc
+      config[network.name].ARC
     );
     await arcadeSwap.deployed();
 
@@ -54,8 +52,6 @@ async function main() {
         ConstructorArgs: [
           config[network.name].BEP20Price,
           config[network.name].ARC,
-          gameCurrency.address,
-          config[network.name].GcPerArc,
         ],
       });
     } catch (error) {

@@ -6,7 +6,7 @@ export default {
   },
   testnet: {
     BEP20Price: "0x3DE3DAF9322854d18E7D79Ce4Ff5B6f8E5187917",
-    ARC: "0xEA071968Faf66BE3cc424102fE9DE2F63BBCD12D",
+    ARC: "0xDD14Dc7408b53C9F5B444549058a5d6c0B45C3AD",
     GcPerArc: 200,
   },
   GameCurrency: {

@@ -48,6 +48,10 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     }
     mapping(uint256 => Commission) internal _commissions;
 
+    uint256 public txDuration;
+    // <user address, <game id => timestamp>>
+    mapping (address => mapping(uint256 => uint256)) public lastTxTime;
+
     bytes32 public immutable DOMAIN_SEPARATOR;
     address public backendSigner;
 
@@ -66,20 +70,13 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     event GamePartnership(uint256 indexed _gameId, bool _partnership);
 
-    event BuyGameCurrency(
+    event SwapGameCurrency(
+        uint256 indexed _type, // 1: buyGc, 2: sellGc
         uint256 indexed _gameId,
         address indexed _user,
-        uint256 _arcAmount,
+        uint256 _amount,
         uint256 _received,
         uint256 _minted
-    );
-
-    event SellGameCurrency(
-        uint256 indexed _gameId,
-        address indexed _user,
-        uint256 _gcAmount,
-        uint256 _received,
-        uint256 _burned
     );
 
     // emit event when user transfer Gc from wallet to the game
@@ -95,6 +92,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         address indexed _user,
         uint256 _gcAmount
     );
+
+    event SetTxDuration(uint256 _duration);
 
     modifier isActiveGame(uint256 _gameId) {
         require(gameInfo[_gameId].id == _gameId, "not initialized game");
@@ -230,15 +229,20 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         request.validate();
         request.verify(DOMAIN_SEPARATOR);
         require(request.maker == backendSigner, "invalid signer");
+        require(request.requester == msg.sender, "invalid requester");
         require(
             request.gcToken == address(gameInfo[request.gameId].gcToken),
             "invalid game currency token"
         );
-
         uint256 gameId = request.gameId;
-        if (gameInfo[gameId].isPartnership) {
-            require(isWhitelists[gameId][msg.sender], "not a whitelist");
-        }
+        require(
+            block.timestamp - lastTxTime[msg.sender][gameId] >= txDuration,
+            "Not time to buy Game Point"
+        );
+
+        // if (gameInfo[gameId].isPartnership) {
+        //     require(isWhitelists[gameId][msg.sender], "not a whitelist");
+        // }
 
         // distribute commission
         uint256 commission1 =
@@ -284,7 +288,10 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
         GameCurrency(request.gcToken).mint(msg.sender, toReceive);
 
-        emit BuyGameCurrency(
+        lastTxTime[msg.sender][gameId] = block.timestamp;
+
+        emit SwapGameCurrency(
+            1, // BuyGc
             gameId,
             msg.sender,
             request.amount,
@@ -293,10 +300,10 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
 
         // if not partnership, directly transfer purchased Gc to the game
-        if (!gameInfo[gameId].isPartnership) {
-            GameCurrency(request.gcToken).burn(msg.sender, toReceive);
-            emit TransferWalletToGame(gameId, msg.sender, toReceive);
-        }
+        // if (!gameInfo[gameId].isPartnership) {
+        //     GameCurrency(request.gcToken).burn(msg.sender, toReceive);
+        //     emit TransferWalletToGame(gameId, msg.sender, toReceive);
+        // }
     }
 
     function sellGc(Requests.Request memory request)
@@ -309,15 +316,20 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         request.validate();
         request.verify(DOMAIN_SEPARATOR);
         require(request.maker == backendSigner, "invalid signer");
+        require(request.requester == msg.sender, "invalid requester");
         require(
             request.gcToken == address(gameInfo[request.gameId].gcToken),
             "invalid game currency token"
         );
-
         uint256 gameId = request.gameId;
-        if (gameInfo[gameId].isPartnership) {
-            require(isWhitelists[gameId][msg.sender], "not a whitelist");
-        }
+        require(
+            block.timestamp - lastTxTime[msg.sender][gameId] >= txDuration,
+            "Not time to buy Game Point"
+        );
+
+        // if (gameInfo[gameId].isPartnership) {
+        //     require(isWhitelists[gameId][msg.sender], "not a whitelist");
+        // }
 
         require(
             userInfo[gameId][msg.sender].gcAmount >= request.amount,
@@ -361,7 +373,10 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         userInfo[gameId][msg.sender].arcAmount -= toReceive;
         userInfo[gameId][msg.sender].gcAmount -= request.amount;
 
-        emit SellGameCurrency(
+        lastTxTime[msg.sender][gameId] = block.timestamp;
+
+        emit SwapGameCurrency(
+            2,
             gameId,
             msg.sender,
             request.amount,
@@ -370,9 +385,9 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
 
         // if not partnership, directly transfer purchased Gc to the game
-        if (!gameInfo[gameId].isPartnership) {
-            emit TransferGameToWallet(gameId, msg.sender, request.amount);
-        }
+        // if (!gameInfo[gameId].isPartnership) {
+        //     emit TransferGameToWallet(gameId, msg.sender, request.amount);
+        // }
     }
 
     /** 
@@ -422,5 +437,16 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     {
         require(_gameId != 0, "game id can't be zero");
         return _commissions[_gameId];
+    }
+
+    /**
+     * @notice Set transaction duration
+     * @param _duration duration  in seconds
+     */
+    function setTxDuration(uint256 _duration) external onlyOwner {
+        require(_duration > 0, "Non-zero duration");
+        require(txDuration != _duration, "Different duration");
+        txDuration = _duration;
+        emit SetTxDuration(_duration);
     }
 }

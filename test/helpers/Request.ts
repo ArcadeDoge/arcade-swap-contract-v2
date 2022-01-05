@@ -5,7 +5,17 @@ import {
   TypedDataDomain,
   TypedDataField,
 } from "@ethersproject/abstract-signer";
-import { Signature } from "@ethersproject/bytes";
+import {
+  Signature,
+  hexlify,
+  joinSignature,
+  splitSignature,
+} from "@ethersproject/bytes";
+import { keccak256 } from "@ethersproject/keccak256";
+import { defaultAbiCoder } from "@ethersproject/abi";
+import { toUtf8Bytes } from "@ethersproject/strings";
+import { pack } from "@ethersproject/solidity";
+import { SigningKey } from "@ethersproject/signing-key";
 
 export type RequestType = {
   maker: string;
@@ -23,8 +33,8 @@ export type RequestWithSignature = RequestType & {
   s: string;
 };
 
-const EIP712DOMAIN_TYPEHASH = ethers.utils.keccak256(
-  ethers.utils.toUtf8Bytes(
+const EIP712DOMAIN_TYPEHASH = keccak256(
+  toUtf8Bytes(
     "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
   )
 );
@@ -35,13 +45,13 @@ const getDomainSeparator = (
   chainId: number,
   address: string
 ) => {
-  return ethers.utils.keccak256(
-    ethers.utils.defaultAbiCoder.encode(
+  return keccak256(
+    defaultAbiCoder.encode(
       ["bytes32", "bytes32", "bytes32", "uint256", "address"],
       [
         EIP712DOMAIN_TYPEHASH,
-        ethers.utils.keccak256(ethers.utils.toUtf8Bytes(name)),
-        ethers.utils.keccak256(ethers.utils.toUtf8Bytes(version)),
+        keccak256(toUtf8Bytes(name)),
+        keccak256(toUtf8Bytes(version)),
         chainId,
         address,
       ]
@@ -75,8 +85,8 @@ class Request {
   }
 
   hash(overrides?: RequestType) {
-    return ethers.utils.keccak256(
-      ethers.utils.defaultAbiCoder.encode(
+    return keccak256(
+      defaultAbiCoder.encode(
         [
           "bytes32",
           "address",
@@ -112,19 +122,19 @@ class Request {
       chainId,
       verifyingContract
     );
-    const digest = ethers.utils.keccak256(
-      ethers.utils.solidityPack(
+    const digest = keccak256(
+      pack(
         ["bytes1", "bytes1", "bytes32", "bytes32"],
         ["0x19", "0x01", DOMAIN_SEPARATOR, this.hash()]
       )
     );
     const privateKey =
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-    const key = new ethers.utils.SigningKey(ethers.utils.hexlify(privateKey));
+    const key = new SigningKey(hexlify(privateKey));
     const signDigest = key.signDigest.bind(key);
-    const signature = ethers.utils.joinSignature(signDigest(digest));
+    const signature = joinSignature(signDigest(digest));
 
-    return ethers.utils.splitSignature(signature);
+    return splitSignature(signature);
   }
 }
 
