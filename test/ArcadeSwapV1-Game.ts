@@ -44,28 +44,28 @@ describe("ArcadeSwapV1-Game", function () {
     await arcadeSwap.deployed();
   });
 
-  it("Should revert set Gc per Arc if not initialized game", async () => {
+  it("Should revert set Gc per USD if not initialized game", async () => {
     const gameId = 1;
-    const gcPerArc = 200;
+    const gcPerUSD = 200;
     await expect(
-      arcadeSwap.setGameGcPerArc(gameId, gcPerArc)
+      arcadeSwap.setGameGcPerUSD(gameId, gcPerUSD)
     ).to.be.revertedWith("not initialized game");
   });
 
   it("Should create game currency token if new game", async () => {
     const initGameId = 1;
-    const initGcPerArc = 200;
+    const initGcPerUSD = 200;
     await arcadeSwap.setNewGame(
       initGameId,
-      initGcPerArc,
+      initGcPerUSD,
       "StarShards",
       "SS",
       false
     );
 
-    const { id, gcPerArc, gcToken, gcName, gcSymbol, isActive, isPartnership } =
+    const { id, gcPerUSD, gcToken, gcName, gcSymbol, isActive, isPartnership } =
       await arcadeSwap.gameInfo(initGameId);
-    expect(gcPerArc).to.equal(gcPerArc);
+    expect(gcPerUSD).to.equal(gcPerUSD);
     const gcContract: Contract = await ethers.getContractAt(
       "GameCurrency",
       gcToken

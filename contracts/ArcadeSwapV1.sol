@@ -20,7 +20,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     struct GameInfo {
         uint256 id; // game id
-        uint256 gcPerArc;
+        uint256 gcPerUSD;
         IERC20 gcToken;
         string gcName;
         string gcSymbol;
@@ -57,7 +57,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     event NewGame(
         uint256 indexed _gameId,
-        uint256 indexed _gcPerArc,
+        uint256 indexed _gcPerUSD,
         address indexed _gcToken,
         string _gcName,
         string _gcSymbol,
@@ -66,7 +66,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     event GameActive(uint256 indexed _gameId, bool _active);
 
-    event GameGcPerArc(uint256 indexed _gameId, uint256 _gcPerArc);
+    event GameGcPerUSD(uint256 indexed _gameId, uint256 _gcPerUSD);
 
     event GamePartnership(uint256 indexed _gameId, bool _partnership);
 
@@ -138,17 +138,17 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     function setNewGame(
         uint256 _gameId,
-        uint256 _gcPerArc,
+        uint256 _gcPerUSD,
         string memory _gcName,
         string memory _gcSymbol,
         bool isPartnership
     ) external onlyOwner {
         require(gameInfo[_gameId].id != _gameId, "Already initialized");
-        require(_gcPerArc > 0, "invalid game currency amount per arc token");
+        require(_gcPerUSD > 0, "invalid game currency amount per arc token");
         GameCurrency gcToken = new GameCurrency(_gcName, _gcSymbol);
         gameInfo[_gameId] = GameInfo({
             id: _gameId,
-            gcPerArc: _gcPerArc,
+            gcPerUSD: _gcPerUSD,
             gcName: _gcName,
             gcSymbol: _gcSymbol,
             gcToken: IERC20(gcToken),
@@ -158,7 +158,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
         emit NewGame(
             _gameId,
-            _gcPerArc,
+            _gcPerUSD,
             address(gcToken),
             _gcName,
             _gcSymbol,
@@ -172,13 +172,13 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         emit GameActive(_gameId, _active);
     }
 
-    function setGameGcPerArc(uint256 _gameId, uint256 _gcPerArc)
+    function setGameGcPerUSD(uint256 _gameId, uint256 _gcPerUSD)
         external onlyOwner isActiveGame(_gameId)
     {
-        require(_gcPerArc > 0, "invalid game currency amount per arc token");
-        gameInfo[_gameId].gcPerArc = _gcPerArc;
+        require(_gcPerUSD > 0, "invalid game currency amount per arc token");
+        gameInfo[_gameId].gcPerUSD = _gcPerUSD;
 
-        emit GameGcPerArc(_gameId, _gcPerArc);
+        emit GameGcPerUSD(_gameId, _gcPerUSD);
     }
 
     function setPartnership(uint256 _gameId, bool _partnership)
@@ -273,7 +273,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 arcPrice = bep20Price.getTokenPrice(address(arcToken), 18);
         // GC token amount to be received in 18 digits
         uint256 toReceive =
-            gameInfo[gameId].gcPerArc * arcPrice * request.amount / 10 ** 18;
+            gameInfo[gameId].gcPerUSD * arcPrice * request.amount / 10 ** 18;
 
         uint256 weightedAverage = userInfo[gameId][msg.sender].weightedAverage;
         weightedAverage =
@@ -343,7 +343,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 toReceive =
             request.amount * (10 ** 18) /
             (
-                gameInfo[gameId].gcPerArc * userInfo[gameId][msg.sender].weightedAverage
+                gameInfo[gameId].gcPerUSD * userInfo[gameId][msg.sender].weightedAverage
             );
 
         // distribute commission

@@ -10,7 +10,7 @@ const BIG_ONE = ethers.BigNumber.from(10).pow(18);
 
 describe("ArcadeSwapV1-Swap", function () {
   const gameId = 1;
-  const gcPerArc = 200;
+  const gcPerUSD = 200;
 
   // eslint-disable-next-line no-unused-vars
   let owner: SignerWithAddress,
@@ -183,7 +183,7 @@ describe("ArcadeSwapV1-Swap", function () {
 
     await arcadeSwap.setBackendSigner(owner.address);
 
-    await arcadeSwap.setNewGame(gameId, gcPerArc, "StarShards", "SS", true);
+    await arcadeSwap.setNewGame(gameId, gcPerUSD, "StarShards", "SS", true);
     const gameInfo = await arcadeSwap.gameInfo(gameId);
     gcToken = gameInfo.gcToken;
 
