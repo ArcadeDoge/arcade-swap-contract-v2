@@ -25,7 +25,6 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         string gcName;
         string gcSymbol;
         bool isActive;
-        bool isPartnership; // true if the game is a partnership game
     }
 
     struct UserInfo {
@@ -37,8 +36,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     // <game id => <user address => UserInfo>>
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
     mapping (uint256 => GameInfo) public gameInfo;
-    mapping (uint256 => address[]) public gameWhitelists;
-    mapping (uint256 => mapping (address => bool)) public isWhitelists;
+    mapping (uint256 => address[]) public gameUsers;
+    mapping (uint256 => mapping (address => bool)) public gameUsersAdded;
 
     struct Commission {
         uint256 commission1; // 100% in 10000
@@ -60,15 +59,16 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 indexed _gcPerUSD,
         address indexed _gcToken,
         string _gcName,
-        string _gcSymbol,
-        bool _isPartnership
+        string _gcSymbol
     );
 
     event GameActive(uint256 indexed _gameId, bool _active);
 
     event GameGcPerUSD(uint256 indexed _gameId, uint256 _gcPerUSD);
 
-    event GamePartnership(uint256 indexed _gameId, bool _partnership);
+    event ClearUser(uint256 indexed _gameId, address indexed _user);
+
+    event ClearGame(uint256 indexed _gameId);
 
     event SwapGameCurrency(
         uint256 indexed _type, // 1: buyGc, 2: sellGc
@@ -123,6 +123,10 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
     }
 
+    function setArcToken(IERC20 _arcToken) external onlyOwner {
+        arcToken = _arcToken;
+    }
+
     function setBackendSigner(address _signer) external {
         require(_signer != address(0), "invalid signer address");
         backendSigner = _signer;
@@ -140,8 +144,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 _gameId,
         uint256 _gcPerUSD,
         string memory _gcName,
-        string memory _gcSymbol,
-        bool isPartnership
+        string memory _gcSymbol
     ) external onlyOwner {
         require(gameInfo[_gameId].id != _gameId, "Already initialized");
         require(_gcPerUSD > 0, "invalid game currency amount per arc token");
@@ -152,8 +155,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             gcName: _gcName,
             gcSymbol: _gcSymbol,
             gcToken: IERC20(gcToken),
-            isActive: true,
-            isPartnership: isPartnership
+            isActive: true
         });
 
         emit NewGame(
@@ -161,8 +163,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             _gcPerUSD,
             address(gcToken),
             _gcName,
-            _gcSymbol,
-            isPartnership
+            _gcSymbol
         );
     }
 
@@ -179,44 +180,6 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         gameInfo[_gameId].gcPerUSD = _gcPerUSD;
 
         emit GameGcPerUSD(_gameId, _gcPerUSD);
-    }
-
-    function setPartnership(uint256 _gameId, bool _partnership)
-        external onlyOwner isActiveGame(_gameId)
-    {
-        gameInfo[_gameId].isPartnership = _partnership;
-
-        emit GamePartnership(_gameId, _partnership);
-    }
-
-    function setGameWhitelist(uint256 _gameId, address _user, bool _status)
-        external onlyOwner isActiveGame(_gameId)
-    {
-        require(
-            gameInfo[_gameId].isPartnership,
-            "only available for partnership game"
-        );
-        if (_status) {
-            gameWhitelists[_gameId].push(_user);
-        }
-        isWhitelists[_gameId][_user] = _status;
-    }
-
-    function setGameWhitelists(
-        uint256 _gameId,
-        address[] calldata _addrs,
-        bool _status
-    ) external onlyOwner isActiveGame(_gameId) {
-        require(
-            gameInfo[_gameId].isPartnership,
-            "only available for partnership game"
-        );
-        for (uint256 i = 0; i < _addrs.length; i++) {
-            if (_status) {
-                gameWhitelists[_gameId].push(_addrs[i]);
-            }
-            isWhitelists[_gameId][_addrs[i]] = _status;
-        }
     }
 
     function buyGc(Requests.Request memory request)
@@ -239,10 +202,6 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             block.timestamp - lastTxTime[msg.sender][gameId] >= txDuration,
             "Not time to buy Game Point"
         );
-
-        // if (gameInfo[gameId].isPartnership) {
-        //     require(isWhitelists[gameId][msg.sender], "not a whitelist");
-        // }
 
         // distribute commission
         uint256 commission1 =
@@ -290,6 +249,11 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
         lastTxTime[msg.sender][gameId] = block.timestamp;
 
+        if (!gameUsersAdded[gameId][msg.sender]) {
+            gameUsersAdded[gameId][msg.sender] = true;
+            gameUsers[gameId].push(msg.sender);
+        }
+
         emit SwapGameCurrency(
             1, // BuyGc
             gameId,
@@ -298,12 +262,6 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             toReceive,
             toReceive
         );
-
-        // if not partnership, directly transfer purchased Gc to the game
-        // if (!gameInfo[gameId].isPartnership) {
-        //     GameCurrency(request.gcToken).burn(msg.sender, toReceive);
-        //     emit TransferWalletToGame(gameId, msg.sender, toReceive);
-        // }
     }
 
     function sellGc(Requests.Request memory request)
@@ -326,10 +284,6 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             block.timestamp - lastTxTime[msg.sender][gameId] >= txDuration,
             "Not time to buy Game Point"
         );
-
-        // if (gameInfo[gameId].isPartnership) {
-        //     require(isWhitelists[gameId][msg.sender], "not a whitelist");
-        // }
 
         require(
             userInfo[gameId][msg.sender].gcAmount >= request.amount,
@@ -383,11 +337,27 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             toReceive,
             request.amount
         );
+    }
 
-        // if not partnership, directly transfer purchased Gc to the game
-        // if (!gameInfo[gameId].isPartnership) {
-        //     emit TransferGameToWallet(gameId, msg.sender, request.amount);
-        // }
+    function clearUser(uint256 _gameId, address _user) external onlyOwner {
+        require(_user != address(0), "invalid parameter");
+        userInfo[_gameId][_user].weightedAverage = 0;
+        userInfo[_gameId][_user].arcAmount = 0;
+        userInfo[_gameId][_user].gcAmount = 0;
+    }
+
+    function clearGame(uint256 _gameId, uint256 _startFrom, uint256 _endTo)
+        external
+        onlyOwner
+    {
+        require(_startFrom <= _endTo, "invalid parameter");
+        require(_endTo < gameUsers[_gameId].length, "invalid paramter");
+        for (uint256 i = _startFrom; i <= _endTo; i++) {
+            UserInfo storage user = userInfo[_gameId][gameUsers[_gameId][i]];
+            user.weightedAverage = 0;
+            user.arcAmount = 0;
+            user.gcAmount = 0;
+        }
     }
 
     /** 

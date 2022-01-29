@@ -183,11 +183,9 @@ describe("ArcadeSwapV1-Swap", function () {
 
     await arcadeSwap.setBackendSigner(owner.address);
 
-    await arcadeSwap.setNewGame(gameId, gcPerUSD, "StarShards", "SS", true);
+    await arcadeSwap.setNewGame(gameId, gcPerUSD, "StarShards", "SS");
     const gameInfo = await arcadeSwap.gameInfo(gameId);
     gcToken = gameInfo.gcToken;
-
-    await arcadeSwap.setGameWhitelist(gameId, alpha.address, true);
   });
 
   it("Should revert if sell without buy", async () => {
