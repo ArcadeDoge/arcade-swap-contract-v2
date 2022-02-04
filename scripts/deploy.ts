@@ -8,6 +8,8 @@ import { ethers, network, run } from "hardhat";
 import { NomicLabsHardhatPluginError } from "hardhat/plugins";
 import config from "../config";
 
+const sleep = (m: number) => new Promise((r) => setTimeout(r, m));
+
 async function main() {
   const signers = await ethers.getSigners();
   // Find deployer signer in signers.
@@ -42,8 +44,12 @@ async function main() {
 
     console.log("Deployed Swap Address: " + arcadeSwap.address);
 
+    await sleep(1000);
+
     await gameCurrency.transferOwnership(arcadeSwap.address);
     console.log("Transferred ownership of GameCurrency to Swap Address");
+
+    await sleep(1000);
 
     try {
       // Verify

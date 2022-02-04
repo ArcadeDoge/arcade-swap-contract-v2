@@ -179,7 +179,9 @@ describe("ArcadeSwapV1-Swap", function () {
     const ArcToken: ContractFactory = await ethers.getContractFactory(
       "MockArcade"
     );
-    arcToken = await ArcToken.deploy(100000000);
+    arcToken = await ArcToken.deploy(
+      ethers.BigNumber.from(100000000).mul(ethers.BigNumber.from(10).pow(18))
+    );
     await arcToken.deployed();
 
     const ArcadeSwapV1: ContractFactory = await ethers.getContractFactory(
@@ -190,7 +192,6 @@ describe("ArcadeSwapV1-Swap", function () {
       arcToken.address
     );
     await arcadeSwap.deployed();
-    // arcToken.mint(arcadeSwap.address, "100000000000000000000000000000000000");
 
     await arcadeSwap.setBackendSigner(owner.address);
 
@@ -199,7 +200,7 @@ describe("ArcadeSwapV1-Swap", function () {
       gcPerUSD,
       "StarShards",
       "SS",
-      "100000000000000000"
+      ethers.BigNumber.from(100000000).mul(ethers.BigNumber.from(10).pow(18))
     );
     const gameInfo = await arcadeSwap.gameInfo(gameId);
     gcToken = gameInfo.gcToken;
@@ -341,6 +342,28 @@ describe("ArcadeSwapV1-Swap", function () {
       BIG_ONE.mul(8).div(100),
       BigNumber.from("40000"),
       BigNumber.from("2500")
+    );
+  });
+
+  it("Should sell more amount than purchased mount", async () => {
+    await arcToken.transfer(arcadeSwap.address, BigNumber.from("100000000"));
+
+    await arcToken.transfer(alpha.address, "100000");
+    await buyGc(
+      alpha,
+      BIG_ONE.div(100), // $0.01
+      BigNumber.from("100000"),
+      BIG_ONE.div(100),
+      BigNumber.from("100000"),
+      BigNumber.from("200000")
+    );
+    await sellGc(
+      alpha,
+      BIG_ONE.div(100), // $0.01
+      BigNumber.from("10000000"),
+      BIG_ONE.mul(4).div(100),
+      BigNumber.from("10000000"),
+      BigNumber.from("5000000")
     );
   });
 });
