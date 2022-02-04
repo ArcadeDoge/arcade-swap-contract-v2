@@ -55,7 +55,13 @@ describe("ArcadeSwapV1-Game", function () {
   it("Should create game currency token if new game", async () => {
     const initGameId = 1;
     const initGcPerUSD = 200;
-    await arcadeSwap.setNewGame(initGameId, initGcPerUSD, "StarShards", "SS");
+    await arcadeSwap.setNewGame(
+      initGameId,
+      initGcPerUSD,
+      "StarShards",
+      "SS",
+      ethers.BigNumber.from(100000000).mul(ethers.BigNumber.from(10).pow(18))
+    );
 
     const { id, gcPerUSD, gcToken, gcName, gcSymbol, isActive } =
       await arcadeSwap.gameInfo(initGameId);

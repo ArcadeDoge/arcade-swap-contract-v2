@@ -38,10 +38,14 @@ describe("ArcadeSwapV1-Swap", function () {
     );
 
     const initArcBalance = await arcToken.balanceOf(user.address);
-    const initGcBalance = await gcTokenContract.balanceOf(user.address);
+    const initGcBalance = await gcTokenContract.balanceOf(
+      gcTokenContract.address
+    );
 
-    const { arcAmount: initArcAmount, gcAmount: initGcAmount } =
-      await arcadeSwap.userInfo(gameId, user.address);
+    const { arcAmount: initArcAmount } = await arcadeSwap.userInfo(
+      gameId,
+      user.address
+    );
 
     await bep20Price.setTokenPrice(arcToken.address, tokenPrice);
     await arcToken.connect(user).approve(arcadeSwap.address, buyArcAmount);
@@ -74,7 +78,7 @@ describe("ArcadeSwapV1-Swap", function () {
     };
     await arcadeSwap.connect(user).buyGc(requestWithSignature);
 
-    const { weightedAverage, arcAmount, gcAmount } = await arcadeSwap.userInfo(
+    const { weightedAverage, arcAmount } = await arcadeSwap.userInfo(
       gameId,
       user.address
     );
@@ -83,11 +87,12 @@ describe("ArcadeSwapV1-Swap", function () {
 
     expect(weightedAverage).to.equal(expectedWeightedAverage);
     expect(arcAmount.sub(initArcAmount)).to.equal(expectedArcAmount);
-    expect(gcAmount.sub(initGcAmount)).to.equal(expectedGcAmount);
 
     const balanceOfArc = await arcToken.balanceOf(user.address);
     expect(initArcBalance.sub(balanceOfArc)).to.equal(buyArcAmount);
-    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
+    const balanceOfGc = await gcTokenContract.balanceOf(
+      gcTokenContract.address
+    );
     expect(balanceOfGc.sub(initGcBalance)).to.equal(expectedGcAmount);
   };
 
@@ -106,10 +111,14 @@ describe("ArcadeSwapV1-Swap", function () {
     );
 
     const initArcBalance = await arcToken.balanceOf(user.address);
-    const initGcBalance = await gcTokenContract.balanceOf(user.address);
+    const initGcBalance = await gcTokenContract.balanceOf(
+      gcTokenContract.address
+    );
 
-    const { arcAmount: initArcAmount, gcAmount: initGcAmount } =
-      await arcadeSwap.userInfo(gameId, user.address);
+    const { arcAmount: initArcAmount } = await arcadeSwap.userInfo(
+      gameId,
+      user.address
+    );
 
     await bep20Price.setTokenPrice(arcToken.address, tokenPrice);
 
@@ -141,7 +150,7 @@ describe("ArcadeSwapV1-Swap", function () {
     };
     await arcadeSwap.connect(user).sellGc(requestWithSignature);
 
-    const { weightedAverage, arcAmount, gcAmount } = await arcadeSwap.userInfo(
+    const { weightedAverage, arcAmount } = await arcadeSwap.userInfo(
       gameId,
       user.address
     );
@@ -149,12 +158,13 @@ describe("ArcadeSwapV1-Swap", function () {
     expect(expectedGcAmount).to.equal(sellGcAmount);
 
     expect(weightedAverage).to.equal(expectedWeightedAverage);
-    expect(initGcAmount.sub(gcAmount)).to.equal(expectedGcAmount);
     expect(initArcAmount.sub(arcAmount)).to.equal(expectedArcAmount);
 
     const balanceOfArc = await arcToken.balanceOf(user.address);
     expect(balanceOfArc.sub(initArcBalance)).to.equal(expectedArcAmount);
-    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
+    const balanceOfGc = await gcTokenContract.balanceOf(
+      gcTokenContract.address
+    );
     expect(initGcBalance.sub(balanceOfGc)).to.equal(sellGcAmount);
   };
 
@@ -180,10 +190,17 @@ describe("ArcadeSwapV1-Swap", function () {
       arcToken.address
     );
     await arcadeSwap.deployed();
+    // arcToken.mint(arcadeSwap.address, "100000000000000000000000000000000000");
 
     await arcadeSwap.setBackendSigner(owner.address);
 
-    await arcadeSwap.setNewGame(gameId, gcPerUSD, "StarShards", "SS");
+    await arcadeSwap.setNewGame(
+      gameId,
+      gcPerUSD,
+      "StarShards",
+      "SS",
+      "100000000000000000"
+    );
     const gameInfo = await arcadeSwap.gameInfo(gameId);
     gcToken = gameInfo.gcToken;
   });
@@ -198,7 +215,7 @@ describe("ArcadeSwapV1-Swap", function () {
         BigNumber.from("200000"),
         BigNumber.from("100000")
       )
-    ).to.be.revertedWith("not enough game currency");
+    ).to.be.revertedWith("invalid weighted average");
   });
 
   it("Should mint if buy Gc", async () => {

@@ -28,7 +28,8 @@ async function main() {
     const GameCurrency = await ethers.getContractFactory("GameCurrency");
     const gameCurrency = await GameCurrency.deploy(
       config.GameCurrency.name,
-      config.GameCurrency.symbol
+      config.GameCurrency.symbol,
+      ethers.BigNumber.from(100000000).mul(ethers.BigNumber.from(10).pow(18))
     );
     await gameCurrency.deployed();
 
