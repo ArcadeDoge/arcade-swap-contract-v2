@@ -25,8 +25,8 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
 
     struct UserInfo {
         uint256 weightedAverage; // in 18 digits
-        uint256 arcAmount; // in 18 digits
         uint256 gcAmount; // in 18 digits
+        int256 arcAmount; // in 18 digits
     }
 
     // <game id => <user address => UserInfo>>
@@ -187,6 +187,67 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         emit GameGcPerUSD(_gameId, _gcPerUSD);
     }
 
+    function mintGc(Requests.Request memory request)
+        public
+        virtual
+        nonReentrant
+        whenNotPaused
+        isActiveGame(request.gameId)
+    {
+        request.validate();
+        request.verify(DOMAIN_SEPARATOR);
+        require(request.maker == backendSigner, "invalid signer");
+        require(request.requester == msg.sender, "invalid requester");
+        require(
+            request.gcToken == gameInfo[request.gameId].gcToken,
+            "invalid game currency token"
+        );
+        uint256 gameId = request.gameId;
+        require(
+            block.timestamp - lastTxTime[msg.sender][gameId] >= txDuration,
+            "Not time to update Game Point"
+        );
+
+        userInfo[gameId][msg.sender].gcAmount += request.amount;
+        
+        GameCurrency(request.gcToken).mint(msg.sender, request.amount);
+
+        lastTxTime[msg.sender][gameId] = block.timestamp;
+
+        if (!gameUsersAdded[gameId][msg.sender]) {
+            gameUsersAdded[gameId][msg.sender] = true;
+            gameUsers[gameId].push(msg.sender);
+        }
+    }
+
+    function burnGc(Requests.Request memory request)
+        public
+        virtual
+        nonReentrant
+        whenNotPaused
+        isActiveGame(request.gameId)
+    {
+        request.validate();
+        request.verify(DOMAIN_SEPARATOR);
+        require(request.maker == backendSigner, "invalid signer");
+        require(request.requester == msg.sender, "invalid requester");
+        require(
+            request.gcToken == gameInfo[request.gameId].gcToken,
+            "invalid game currency token"
+        );
+        uint256 gameId = request.gameId;
+        require(
+            block.timestamp - lastTxTime[msg.sender][gameId] >= txDuration,
+            "Not time to update Game Point"
+        );
+
+        userInfo[gameId][msg.sender].gcAmount -= request.amount;
+        
+        GameCurrency(request.gcToken).burn(msg.sender, request.amount);
+
+        lastTxTime[msg.sender][gameId] = block.timestamp;
+    }
+
     function buyGc(Requests.Request memory request)
         public
         virtual
@@ -239,14 +300,18 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         uint256 toReceive =
             gameInfo[gameId].gcPerUSD * arcPrice * request.amount / 10 ** 18;
 
-        uint256 weightedAverage = userInfo[gameId][msg.sender].weightedAverage;
+        int256 weightedAverage = int256(
+            userInfo[gameId][msg.sender].weightedAverage
+        );
         weightedAverage =
             weightedAverage * userInfo[gameId][msg.sender].arcAmount /
-            10 ** 18 + request.amount * arcPrice / 10 ** 18;
-        userInfo[gameId][msg.sender].arcAmount += request.amount;
-        userInfo[gameId][msg.sender].weightedAverage =
+            10 ** 18 +
+            int256(request.amount * arcPrice / 10 ** 18);
+        userInfo[gameId][msg.sender].arcAmount += int256(request.amount);
+        userInfo[gameId][msg.sender].weightedAverage = uint256(
             weightedAverage * 10 ** 18 /
-            userInfo[gameId][msg.sender].arcAmount;
+            userInfo[gameId][msg.sender].arcAmount
+        );
         userInfo[gameId][msg.sender].gcAmount += toReceive;
         
         GameCurrency(request.gcToken).mint(msg.sender, toReceive);
@@ -328,7 +393,7 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         );
         GameCurrency(request.gcToken).burn(msg.sender, request.amount);
 
-        userInfo[gameId][msg.sender].arcAmount -= toReceive;
+        userInfo[gameId][msg.sender].arcAmount -= int256(toReceive);
         userInfo[gameId][msg.sender].gcAmount -= request.amount;
         
         lastTxTime[msg.sender][gameId] = block.timestamp;

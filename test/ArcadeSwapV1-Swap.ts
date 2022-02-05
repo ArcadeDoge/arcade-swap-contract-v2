@@ -160,6 +160,53 @@ describe("ArcadeSwapV1-Swap", function () {
     expect(initGcBalance.sub(balanceOfGc)).to.equal(sellGcAmount);
   };
 
+  const mintGc = async (
+    user: SignerWithAddress,
+    increaseGcAmount: BigNumber,
+    expectedGcAmount: BigNumber
+  ) => {
+    const gcTokenContract: Contract = await ethers.getContractAt(
+      "GameCurrency",
+      gcToken,
+      user
+    );
+
+    const initGcBalance = await gcTokenContract.balanceOf(user.address);
+
+    const request: RequestType = {
+      maker: owner.address,
+      requester: user.address,
+      gcToken: gcToken,
+      gameId: gameId,
+      amount: increaseGcAmount.toString(),
+      reserved1: 0,
+      reserved2: 0,
+    };
+    const signature: Signature = await createBuyRequest(
+      owner,
+      user,
+      request.gcToken,
+      request.gameId,
+      increaseGcAmount,
+      BigNumber.from(0),
+      BigNumber.from(0),
+      arcadeSwap.address
+    );
+    const requestWithSignature: RequestWithSignature = {
+      // eslint-disable-next-line
+      ...request,
+      v: signature.v,
+      r: signature.r,
+      s: signature.s,
+    };
+    await arcadeSwap.connect(user).mintGc(requestWithSignature);
+
+    expect(expectedGcAmount).to.equal(increaseGcAmount);
+
+    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
+    expect(balanceOfGc.sub(initGcBalance)).to.equal(expectedGcAmount);
+  };
+
   beforeEach(async () => {
     [owner, alpha, beta, ...addrs] = await ethers.getSigners();
 
@@ -365,5 +412,36 @@ describe("ArcadeSwapV1-Swap", function () {
     //   BigNumber.from("20000"),
     //   BigNumber.from("80000")
     // );
+  });
+
+  it("Should sell more amount than purchased mount with mintting gc", async () => {
+    await arcToken.transfer(arcadeSwap.address, BigNumber.from("100000000"));
+
+    await arcToken.transfer(alpha.address, "100000");
+    await buyGc(
+      alpha,
+      BIG_ONE.div(100), // $0.01
+      BigNumber.from("10000"),
+      BIG_ONE.div(100),
+      BigNumber.from("10000"),
+      BigNumber.from("20000")
+    );
+    await mintGc(alpha, BigNumber.from("480000"), BigNumber.from("480000"));
+    await sellGc(
+      alpha,
+      BIG_ONE.div(100), // $0.01
+      BigNumber.from("500000"),
+      BIG_ONE.div(100),
+      BigNumber.from("500000"),
+      BigNumber.from("250000")
+    );
+    await buyGc(
+      alpha,
+      BIG_ONE.mul(2).div(100), // $0.02
+      BigNumber.from("20000"),
+      BIG_ONE.div(110), // 0.0090909
+      BigNumber.from("20000"),
+      BigNumber.from("80000")
+    );
   });
 });
