@@ -29,7 +29,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
 
     struct UserInfo {
         uint256 weightedAverage; // in 18 digits
-        uint256 arcAmount; // in 18 digits
+        int256 arcAmount; // in 18 digits
     }
 
     // <game id => <user address => UserInfo>>
@@ -247,16 +247,19 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         uint256 toReceive =
             gameInfo[gameId].gcPerUSD * arcPrice * request.amount / 10 ** 18;
 
-        uint256 weightedAverage = userInfo[gameId][msg.sender].weightedAverage;
+        int256 weightedAverage = int256(
+            userInfo[gameId][msg.sender].weightedAverage
+        );
         weightedAverage =
             weightedAverage * userInfo[gameId][msg.sender].arcAmount /
             10 ** 18 +
-            request.amount * arcPrice / 10 ** 18;
-        userInfo[gameId][msg.sender].arcAmount += request.amount;
-        userInfo[gameId][msg.sender].weightedAverage =
+            int256(request.amount * arcPrice / 10 ** 18);
+        userInfo[gameId][msg.sender].arcAmount += int256(request.amount);
+        userInfo[gameId][msg.sender].weightedAverage = uint256(
             weightedAverage * 10 ** 18 /
-            userInfo[gameId][msg.sender].arcAmount;
-
+            userInfo[gameId][msg.sender].arcAmount
+        );
+        
         GameCurrency(request.gcToken).mint(request.gcToken, toReceive);
 
         lastTxTime[msg.sender][gameId] = block.timestamp;
@@ -332,8 +335,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
         GameCurrency(request.gcToken).burn(request.gcToken, request.amount);
 
-        userInfo[gameId][msg.sender].arcAmount -= toReceive;
-
+        userInfo[gameId][msg.sender].arcAmount -= int256(toReceive);
+        
         lastTxTime[msg.sender][gameId] = block.timestamp;
 
         emit SwapGameCurrency(

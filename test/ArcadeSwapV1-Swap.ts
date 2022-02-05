@@ -345,6 +345,28 @@ describe("ArcadeSwapV1-Swap", function () {
     );
   });
 
+  // it("Should sell more amount than purchased mount", async () => {
+  //   await arcToken.transfer(arcadeSwap.address, BigNumber.from("100000000"));
+
+  //   await arcToken.transfer(alpha.address, "100000");
+  //   await buyGc(
+  //     alpha,
+  //     BIG_ONE.div(100).mul(2), // $0.02
+  //     BigNumber.from("1000"),
+  //     BIG_ONE.div(100).mul(2),
+  //     BigNumber.from("1000"),
+  //     BigNumber.from("4000")
+  //   );
+  //   await sellGc(
+  //     alpha,
+  //     BIG_ONE.div(100).mul(2), // $0.01
+  //     BigNumber.from("10000000"),
+  //     BIG_ONE.mul(4).div(100),
+  //     BigNumber.from("10000000"),
+  //     BigNumber.from("5000000")
+  //   );
+  // });
+
   it("Should sell more amount than purchased mount", async () => {
     await arcToken.transfer(arcadeSwap.address, BigNumber.from("100000000"));
 
@@ -352,18 +374,26 @@ describe("ArcadeSwapV1-Swap", function () {
     await buyGc(
       alpha,
       BIG_ONE.div(100), // $0.01
-      BigNumber.from("100000"),
+      BigNumber.from("10000"),
       BIG_ONE.div(100),
-      BigNumber.from("100000"),
-      BigNumber.from("200000")
+      BigNumber.from("10000"),
+      BigNumber.from("20000")
     );
     await sellGc(
       alpha,
       BIG_ONE.div(100), // $0.01
-      BigNumber.from("10000000"),
-      BIG_ONE.mul(4).div(100),
-      BigNumber.from("10000000"),
-      BigNumber.from("5000000")
+      BigNumber.from("500000"),
+      BIG_ONE.div(100),
+      BigNumber.from("500000"),
+      BigNumber.from("250000")
+    );
+    await buyGc(
+      alpha,
+      BIG_ONE.mul(2).div(100), // $0.02
+      BigNumber.from("20000"),
+      BIG_ONE.div(110), // 0.0090909
+      BigNumber.from("20000"),
+      BigNumber.from("80000")
     );
   });
 });
