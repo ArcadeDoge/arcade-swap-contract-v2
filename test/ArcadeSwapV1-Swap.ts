@@ -38,9 +38,7 @@ describe("ArcadeSwapV1-Swap", function () {
     );
 
     const initArcBalance = await arcToken.balanceOf(user.address);
-    const initGcBalance = await gcTokenContract.balanceOf(
-      gcTokenContract.address
-    );
+    const initGcBalance = await gcTokenContract.balanceOf(user.address);
 
     const { arcAmount: initArcAmount } = await arcadeSwap.userInfo(
       gameId,
@@ -90,9 +88,7 @@ describe("ArcadeSwapV1-Swap", function () {
 
     const balanceOfArc = await arcToken.balanceOf(user.address);
     expect(initArcBalance.sub(balanceOfArc)).to.equal(buyArcAmount);
-    const balanceOfGc = await gcTokenContract.balanceOf(
-      gcTokenContract.address
-    );
+    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
     expect(balanceOfGc.sub(initGcBalance)).to.equal(expectedGcAmount);
   };
 
@@ -111,9 +107,7 @@ describe("ArcadeSwapV1-Swap", function () {
     );
 
     const initArcBalance = await arcToken.balanceOf(user.address);
-    const initGcBalance = await gcTokenContract.balanceOf(
-      gcTokenContract.address
-    );
+    const initGcBalance = await gcTokenContract.balanceOf(user.address);
 
     const { arcAmount: initArcAmount } = await arcadeSwap.userInfo(
       gameId,
@@ -162,9 +156,7 @@ describe("ArcadeSwapV1-Swap", function () {
 
     const balanceOfArc = await arcToken.balanceOf(user.address);
     expect(balanceOfArc.sub(initArcBalance)).to.equal(expectedArcAmount);
-    const balanceOfGc = await gcTokenContract.balanceOf(
-      gcTokenContract.address
-    );
+    const balanceOfGc = await gcTokenContract.balanceOf(user.address);
     expect(initGcBalance.sub(balanceOfGc)).to.equal(sellGcAmount);
   };
 
@@ -199,13 +191,7 @@ describe("ArcadeSwapV1-Swap", function () {
 
     await arcadeSwap.setBackendSigner(owner.address);
 
-    await arcadeSwap.setNewGame(
-      gameId,
-      gcPerUSD,
-      "StarShards",
-      "SS",
-      ethers.BigNumber.from(100000000).mul(ethers.BigNumber.from(10).pow(18))
-    );
+    await arcadeSwap.setNewGame(gameId, gcPerUSD, "StarShards", "SS");
     const gameInfo = await arcadeSwap.gameInfo(gameId);
     gcToken = gameInfo.gcToken;
   });
@@ -220,7 +206,7 @@ describe("ArcadeSwapV1-Swap", function () {
         BigNumber.from("200000"),
         BigNumber.from("100000")
       )
-    ).to.be.revertedWith("invalid weighted average");
+    ).to.be.revertedWith("not enough game currency");
   });
 
   it("Should mint if buy Gc", async () => {
@@ -349,29 +335,7 @@ describe("ArcadeSwapV1-Swap", function () {
     );
   });
 
-  // it("Should sell more amount than purchased mount", async () => {
-  //   await arcToken.transfer(arcadeSwap.address, BigNumber.from("100000000"));
-
-  //   await arcToken.transfer(alpha.address, "100000");
-  //   await buyGc(
-  //     alpha,
-  //     BIG_ONE.div(100).mul(2), // $0.02
-  //     BigNumber.from("1000"),
-  //     BIG_ONE.div(100).mul(2),
-  //     BigNumber.from("1000"),
-  //     BigNumber.from("4000")
-  //   );
-  //   await sellGc(
-  //     alpha,
-  //     BIG_ONE.div(100).mul(2), // $0.01
-  //     BigNumber.from("10000000"),
-  //     BIG_ONE.mul(4).div(100),
-  //     BigNumber.from("10000000"),
-  //     BigNumber.from("5000000")
-  //   );
-  // });
-
-  it("Should sell more amount than purchased mount", async () => {
+  it("Should revert if sell more amount than purchased mount", async () => {
     await arcToken.transfer(arcadeSwap.address, BigNumber.from("100000000"));
 
     await arcToken.transfer(alpha.address, "100000");
@@ -383,21 +347,23 @@ describe("ArcadeSwapV1-Swap", function () {
       BigNumber.from("10000"),
       BigNumber.from("20000")
     );
-    await sellGc(
-      alpha,
-      BIG_ONE.div(100), // $0.01
-      BigNumber.from("500000"),
-      BIG_ONE.div(100),
-      BigNumber.from("500000"),
-      BigNumber.from("250000")
-    );
-    await buyGc(
-      alpha,
-      BIG_ONE.mul(2).div(100), // $0.02
-      BigNumber.from("20000"),
-      BIG_ONE.div(110), // 0.0090909
-      BigNumber.from("20000"),
-      BigNumber.from("80000")
-    );
+    await expect(
+      sellGc(
+        alpha,
+        BIG_ONE.div(100), // $0.01
+        BigNumber.from("500000"),
+        BIG_ONE.div(100),
+        BigNumber.from("500000"),
+        BigNumber.from("250000")
+      )
+    ).to.be.revertedWith("not enough game currency");
+    // await buyGc(
+    //   alpha,
+    //   BIG_ONE.mul(2).div(100), // $0.02
+    //   BigNumber.from("20000"),
+    //   BIG_ONE.div(110), // 0.0090909
+    //   BigNumber.from("20000"),
+    //   BigNumber.from("80000")
+    // );
   });
 });

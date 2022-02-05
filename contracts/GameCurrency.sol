@@ -7,10 +7,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract GameCurrency is ERC20, Ownable {
     constructor(
         string memory _name,
-        string memory _symbol,
-        uint256 _initialSupply
+        string memory _symbol
     ) ERC20(_name, _symbol) {
-        _mint(address(this), _initialSupply);
     }
     
     function mint(address _to, uint256 _amount) public onlyOwner {

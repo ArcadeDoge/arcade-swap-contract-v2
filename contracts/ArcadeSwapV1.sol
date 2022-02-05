@@ -25,7 +25,8 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
 
     struct UserInfo {
         uint256 weightedAverage; // in 18 digits
-        int256 arcAmount; // in 18 digits
+        uint256 arcAmount; // in 18 digits
+        uint256 gcAmount; // in 18 digits
     }
 
     // <game id => <user address => UserInfo>>
@@ -145,15 +146,13 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         uint256 _gameId,
         uint256 _gcPerUSD,
         string memory _gcName,
-        string memory _gcSymbol,
-        uint256 _gcTotalSupply
+        string memory _gcSymbol
     ) external onlyOwner {
         require(gameInfo[_gameId].id != _gameId, "Already initialized");
         require(_gcPerUSD > 0, "invalid game currency amount per arc token");
         GameCurrency gcToken = new GameCurrency(
             _gcName,
-            _gcSymbol,
-            _gcTotalSupply
+            _gcSymbol
         );
         gameInfo[_gameId] = GameInfo({
             id: _gameId,
@@ -170,15 +169,6 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
             address(gcToken),
             _gcName,
             _gcSymbol
-        );
-    }
-
-    function increaseGcPot(uint256 _gameId, uint256 _increaseAmount)
-        external onlyOwner isActiveGame(_gameId)
-    {
-        GameCurrency(gameInfo[_gameId].gcToken).mint(
-            gameInfo[_gameId].gcToken,
-            _increaseAmount
         );
     }
 
@@ -249,20 +239,17 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         uint256 toReceive =
             gameInfo[gameId].gcPerUSD * arcPrice * request.amount / 10 ** 18;
 
-        int256 weightedAverage = int256(
-            userInfo[gameId][msg.sender].weightedAverage
-        );
+        uint256 weightedAverage = userInfo[gameId][msg.sender].weightedAverage;
         weightedAverage =
             weightedAverage * userInfo[gameId][msg.sender].arcAmount /
-            10 ** 18 +
-            int256(request.amount * arcPrice / 10 ** 18);
-        userInfo[gameId][msg.sender].arcAmount += int256(request.amount);
-        userInfo[gameId][msg.sender].weightedAverage = uint256(
+            10 ** 18 + request.amount * arcPrice / 10 ** 18;
+        userInfo[gameId][msg.sender].arcAmount += request.amount;
+        userInfo[gameId][msg.sender].weightedAverage =
             weightedAverage * 10 ** 18 /
-            userInfo[gameId][msg.sender].arcAmount
-        );
+            userInfo[gameId][msg.sender].arcAmount;
+        userInfo[gameId][msg.sender].gcAmount += toReceive;
         
-        GameCurrency(request.gcToken).mint(request.gcToken, toReceive);
+        GameCurrency(request.gcToken).mint(msg.sender, toReceive);
 
         lastTxTime[msg.sender][gameId] = block.timestamp;
 
@@ -303,6 +290,10 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         );
 
         require(
+            userInfo[gameId][msg.sender].gcAmount >= request.amount,
+            "not enough game currency"
+        );
+        require(
             userInfo[gameId][msg.sender].weightedAverage > 0,
             "invalid weighted average"
         );
@@ -335,9 +326,10 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
             msg.sender,
             toReceive - commission1 - commission2
         );
-        GameCurrency(request.gcToken).burn(request.gcToken, request.amount);
+        GameCurrency(request.gcToken).burn(msg.sender, request.amount);
 
-        userInfo[gameId][msg.sender].arcAmount -= int256(toReceive);
+        userInfo[gameId][msg.sender].arcAmount -= toReceive;
+        userInfo[gameId][msg.sender].gcAmount -= request.amount;
         
         lastTxTime[msg.sender][gameId] = block.timestamp;
 
@@ -355,6 +347,7 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
         require(_user != address(0), "invalid parameter");
         userInfo[_gameId][_user].weightedAverage = 0;
         userInfo[_gameId][_user].arcAmount = 0;
+        userInfo[_gameId][_user].gcAmount = 0;
     }
 
     function clearGame(uint256 _gameId, uint256 _startFrom, uint256 _endTo)
@@ -367,6 +360,7 @@ contract ArcadeSwapV1 is ArcadeUpgradeable {
             UserInfo storage user = userInfo[_gameId][gameUsers[_gameId][i]];
             user.weightedAverage = 0;
             user.arcAmount = 0;
+            user.gcAmount = 0;
         }
     }
 
