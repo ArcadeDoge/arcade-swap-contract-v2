@@ -4,7 +4,7 @@
 // When running the script with `npx hardhat run <script>` you'll find the Hardhat
 // Runtime Environment's members available in the global scope.
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { ethers, network, run } from "hardhat";
+import { ethers, network, run, upgrades } from "hardhat";
 import { NomicLabsHardhatPluginError } from "hardhat/plugins";
 import config from "../config";
 
@@ -36,29 +36,36 @@ async function main() {
     await gameCurrency.deployed();
 
     const Swap = await ethers.getContractFactory("ArcadeSwapV1");
-    const arcadeSwap = await Swap.deploy(
-      config[network.name].BEP20Price,
-      config[network.name].ARC
+    const arcadeSwapUpgrades = await upgrades.deployProxy(
+      Swap,
+      [config[network.name].BEP20Price, config[network.name].ARC],
+      {
+        kind: "uups",
+        initializer: "__ArcadeSwap_init",
+      }
     );
-    await arcadeSwap.deployed();
+    await arcadeSwapUpgrades.deployed();
 
-    console.log("Deployed Swap Address: " + arcadeSwap.address);
+    console.log("Deployed Swap Address: " + arcadeSwapUpgrades.address);
 
     await sleep(1000);
 
-    await gameCurrency.transferOwnership(arcadeSwap.address);
+    await gameCurrency.transferOwnership(arcadeSwapUpgrades.address);
     console.log("Transferred ownership of GameCurrency to Swap Address");
 
     await sleep(1000);
 
     try {
       // Verify
-      console.log("Verifying ArcadeSwapV1: ", arcadeSwap.address);
+      console.log("Verifying GameCurrency: ", gameCurrency.address);
       await run("verify:verify", {
-        address: arcadeSwap.address,
+        address: gameCurrency.address,
         ConstructorArgs: [
-          config[network.name].BEP20Price,
-          config[network.name].ARC,
+          config.GameCurrency.name,
+          config.GameCurrency.symbol,
+          ethers.BigNumber.from(100000000).mul(
+            ethers.BigNumber.from(10).pow(18)
+          ),
         ],
       });
     } catch (error) {
@@ -69,13 +76,36 @@ async function main() {
       }
     }
 
+    await sleep(1000);
+
+    try {
+      // Verify
+      const arcadeSwapImpl = await upgrades.erc1967.getImplementationAddress(
+        arcadeSwapUpgrades.address
+      );
+      console.log("Verifying ArcadeSwapV1: ", arcadeSwapImpl);
+      await run("verify:verify", {
+        address: arcadeSwapImpl,
+      });
+    } catch (error) {
+      if (error instanceof NomicLabsHardhatPluginError) {
+        console.log("Contract source code already verified");
+      } else {
+        console.error(error);
+      }
+    }
+
     const deployerLog = { Label: "Deploying Address", Info: deployer.address };
+    const gcLog = {
+      Label: "Deployed and Verified GameCurrency Address",
+      Info: gameCurrency.address,
+    };
     const swapLog = {
       Label: "Deployed and Verified ArcadeSwapV1 Address",
-      Info: arcadeSwap.address,
+      Info: arcadeSwapUpgrades.address,
     };
 
-    console.table([deployerLog, swapLog]);
+    console.table([deployerLog, gcLog, swapLog]);
   }
 }
 

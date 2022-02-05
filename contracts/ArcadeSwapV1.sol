@@ -2,26 +2,22 @@
 pragma solidity ^0.8.4;
 
 import "hardhat/console.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./abstracts/ArcadeUpgradeable.sol";
 import "./interface/IBEP20Price.sol";
 import "./libraries/Requests.sol";
 import "./GameCurrency.sol";
 
-contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
+contract ArcadeSwapV1 is ArcadeUpgradeable {
     using Requests for Requests.Request;
-    using SafeERC20 for IERC20;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     IBEP20Price public bep20Price;
-    IERC20 public arcToken;
+    IERC20Upgradeable public arcToken;
 
     struct GameInfo {
         uint256 id; // game id
         uint256 gcPerUSD;
-        IERC20 gcToken;
+        address gcToken; // address to GameCurrency
         string gcName;
         string gcSymbol;
         bool isActive;
@@ -50,7 +46,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     // <user address, <game id => timestamp>>
     mapping (address => mapping(uint256 => uint256)) public lastTxTime;
 
-    bytes32 public immutable DOMAIN_SEPARATOR;
+    bytes32 public DOMAIN_SEPARATOR;
     address public backendSigner;
 
     event NewGame(
@@ -100,10 +96,16 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         _;
     }
 
-    constructor(
+    constructor() {
+        
+    }
+
+    function __ArcadeSwap_init(
         IBEP20Price _bep20Price,
-        IERC20 _token
-    ) {
+        IERC20Upgradeable _token
+    ) public initializer {
+        ArcadeUpgradeable.initialize();
+
         bep20Price = _bep20Price;
         arcToken = _token;
 
@@ -122,7 +124,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    function setArcToken(IERC20 _arcToken) external onlyOwner {
+    function setArcToken(IERC20Upgradeable _arcToken) external onlyOwner {
         arcToken = _arcToken;
     }
 
@@ -158,7 +160,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
             gcPerUSD: _gcPerUSD,
             gcName: _gcName,
             gcSymbol: _gcSymbol,
-            gcToken: IERC20(gcToken),
+            gcToken: address(gcToken),
             isActive: true
         });
 
@@ -174,8 +176,8 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
     function increaseGcPot(uint256 _gameId, uint256 _increaseAmount)
         external onlyOwner isActiveGame(_gameId)
     {
-        GameCurrency(address(gameInfo[_gameId].gcToken)).mint(
-            address(gameInfo[_gameId].gcToken),
+        GameCurrency(gameInfo[_gameId].gcToken).mint(
+            gameInfo[_gameId].gcToken,
             _increaseAmount
         );
     }
@@ -207,7 +209,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         require(request.maker == backendSigner, "invalid signer");
         require(request.requester == msg.sender, "invalid requester");
         require(
-            request.gcToken == address(gameInfo[request.gameId].gcToken),
+            request.gcToken == gameInfo[request.gameId].gcToken,
             "invalid game currency token"
         );
         uint256 gameId = request.gameId;
@@ -291,7 +293,7 @@ contract ArcadeSwapV1 is Ownable, Pausable, ReentrancyGuard {
         require(request.maker == backendSigner, "invalid signer");
         require(request.requester == msg.sender, "invalid requester");
         require(
-            request.gcToken == address(gameInfo[request.gameId].gcToken),
+            request.gcToken == gameInfo[request.gameId].gcToken,
             "invalid game currency token"
         );
         uint256 gameId = request.gameId;

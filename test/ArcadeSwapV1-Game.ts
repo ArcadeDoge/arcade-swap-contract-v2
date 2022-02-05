@@ -1,8 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { Contract, ContractFactory } from "@ethersproject/contracts";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { BigNumber } from "ethers";
 
 const BIG_ONE = ethers.BigNumber.from(10).pow(18);
 
@@ -37,9 +36,13 @@ describe("ArcadeSwapV1-Game", function () {
     const ArcadeSwapV1: ContractFactory = await ethers.getContractFactory(
       "ArcadeSwapV1"
     );
-    arcadeSwap = await ArcadeSwapV1.deploy(
-      bep20Price.address,
-      arcToken.address
+    arcadeSwap = await upgrades.deployProxy(
+      ArcadeSwapV1,
+      [bep20Price.address, arcToken.address],
+      {
+        kind: "uups",
+        initializer: "__ArcadeSwap_init",
+      }
     );
     await arcadeSwap.deployed();
   });
