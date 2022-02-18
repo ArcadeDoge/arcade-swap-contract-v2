@@ -30,8 +30,7 @@ async function main() {
     const GameCurrency = await ethers.getContractFactory("GameCurrency");
     const gameCurrency = await GameCurrency.deploy(
       config.GameCurrency.name,
-      config.GameCurrency.symbol,
-      ethers.BigNumber.from(100000000).mul(ethers.BigNumber.from(10).pow(18))
+      config.GameCurrency.symbol
     );
     await gameCurrency.deployed();
 
@@ -60,13 +59,7 @@ async function main() {
       console.log("Verifying GameCurrency: ", gameCurrency.address);
       await run("verify:verify", {
         address: gameCurrency.address,
-        ConstructorArgs: [
-          config.GameCurrency.name,
-          config.GameCurrency.symbol,
-          ethers.BigNumber.from(100000000).mul(
-            ethers.BigNumber.from(10).pow(18)
-          ),
-        ],
+        ConstructorArgs: [config.GameCurrency.name, config.GameCurrency.symbol],
       });
     } catch (error) {
       if (error instanceof NomicLabsHardhatPluginError) {
